@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Marketing AI Pro</title>
+    <!-- <link rel="stylesheet" href="css/style.css"> -->
+    <link rel="stylesheet" href="/static/css/style.css">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-wrapper">
+        <header>
+            <h1><i class="fas fa-bullhorn"></i> Marketing AI Pro</h1>
+            <p>Generate multi-channel campaigns in seconds</p>
+        </header>
+
+        <main class="container">
+            <section class="input-section">
+                <div class="input-group">
+                    <label>Company Name</label>
+                    <input type="text" id="company" placeholder="e.g., Cloud Certitude">
+                </div>
+                <div class="input-group">
+                    <label>Campaign Goal</label>
+                    <input type="text" id="campaign" placeholder="e.g., Spring Product Launch">
+                </div>
+                <div class="input-group">
+                    <label>Product/Service Description</label>
+                    <textarea id="description" rows="4" placeholder="Describe what you are offering..."></textarea>
+                </div>
+                <button id="generateBtn" onclick="generateMarketing()">
+                    <span id="btnText">Generate Strategy</span>
+                    <div id="loader" class="spinner" style="display:none;"></div>
+                </button>
+            </section>
+
+            <section class="results-grid">
+                <div class="card email-card">
+                    <div class="card-header">
+                        <i class="fas fa-envelope"></i>
+                        <h3>Email Campaign</h3>
+                    </div>
+                    <div id="email-content" class="content">Drafting will appear here...</div>
+                </div>
+
+                <div class="card whatsapp-card">
+                    <div class="card-header">
+                        <i class="fab fa-whatsapp"></i>
+                        <h3>WhatsApp Blast</h3>
+                    </div>
+                    <div id="whatsapp-content" class="content">Messages will appear here...</div>
+                </div>
+
+                <div class="card linkedin-card">
+                    <div class="card-header">
+                        <i class="fab fa-linkedin-in"></i>
+                        <h3>LinkedIn Post</h3>
+                    </div>
+                    <div id="linkedin-content" class="content">Posts will appear here...</div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,123 @@
+:root {
+    --primary: #2563eb;
+    --whatsapp: #25d366;
+    --linkedin: #0077b5;
+    --bg: #f8fafc;
+    --text: #1e293b;
+}
+
+body {
+    margin: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: var(--bg);
+    color: var(--text);
+}
+
+.app-wrapper {
+    padding-bottom: 50px;
+}
+
+header {
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+    color: white;
+    text-align: center;
+    padding: 60px 20px;
+    margin-bottom: -40px;
+}
+
+header h1 { margin: 0; font-size: 2.5rem; }
+header p { opacity: 0.9; margin-top: 10px; }
+
+.container {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.input-section {
+    background: white;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    z-index: 10;
+    position: relative;
+}
+
+.input-group { display: flex; flex-direction: column; gap: 8px; }
+label { font-weight: 600; font-size: 0.9rem; color: #64748b; }
+
+input, textarea {
+    padding: 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 1rem;
+    outline: none;
+    transition: border 0.2s;
+}
+
+input:focus, textarea:focus { border-color: var(--primary); }
+
+button {
+    background: var(--primary);
+    color: white;
+    padding: 15px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: transform 0.1s;
+}
+
+button:active { transform: scale(0.98); }
+
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin-top: 40px;
+}
+
+.card {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+}
+
+.card-header {
+    padding: 15px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: white;
+}
+
+.email-card .card-header { background: var(--primary); }
+.whatsapp-card .card-header { background: var(--whatsapp); }
+.linkedin-card .card-header { background: var(--linkedin); }
+
+.content {
+    padding: 20px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    min-height: 150px;
+}
+
+/* Spinner Animation */
+.spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
