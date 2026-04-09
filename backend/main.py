@@ -45,6 +45,7 @@ app.add_middleware(
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 TEXT_PREVIEW_LIMIT = 12000
+MIN_DOC_TEXT_LENGTH = 200
 
 
 def _extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -75,9 +76,9 @@ def _extract_text_from_file(file_name: str, file_bytes: bytes) -> str:
             return ""
 
 
-def _build_user_content(prompt: str, uploaded_file: UploadFile | None, file_bytes: bytes | None) -> list[dict]:
+def _build_user_content(prompt: str, uploaded_file: UploadFile | None, file_bytes: bytes | None) -> tuple[list[dict], str | None]:
     if not uploaded_file or not file_bytes:
-        return [{"type": "text", "text": prompt}]
+        return [{"type": "text", "text": prompt}], None
 
     mime_type = uploaded_file.content_type or "application/octet-stream"
     file_name = uploaded_file.filename or "uploaded_file"
@@ -89,17 +90,22 @@ def _build_user_content(prompt: str, uploaded_file: UploadFile | None, file_byte
                 "type": "text",
                 "text": (
                     f"{prompt}\n\n"
-                    f"An image file named '{file_name}' is attached. Analyze it and use it as additional campaign context."
+                    f"An image file named '{file_name}' is attached. Analyze the image carefully and use it as additional campaign context."
                 ),
             },
             {
                 "type": "image_url",
                 "image_url": {"url": f"data:{mime_type};base64,{encoded}"},
             },
-        ]
+        ], None
 
     extracted_text = _extract_text_from_file(file_name, file_bytes).strip()
     if extracted_text:
+        if len(extracted_text) < MIN_DOC_TEXT_LENGTH:
+            return [], (
+                "We could not extract enough readable text from the uploaded document. "
+                "Please upload a text-based PDF (not scanned), a clearer image, or paste key content into the description."
+            )
         limited_text = extracted_text[:TEXT_PREVIEW_LIMIT]
         truncation_note = ""
         if len(extracted_text) > TEXT_PREVIEW_LIMIT:
@@ -110,22 +116,16 @@ def _build_user_content(prompt: str, uploaded_file: UploadFile | None, file_byte
                 "text": (
                     f"{prompt}\n\n"
                     f"Document attached: {file_name}\n"
-                    "Use the following extracted text as additional context:\n\n"
+                    "Use this extracted text as the PRIMARY context and stay factual to it:\n\n"
                     f"{limited_text}{truncation_note}"
                 ),
             }
-        ]
+        ], None
 
-    return [
-        {
-            "type": "text",
-            "text": (
-                f"{prompt}\n\n"
-                f"A file named '{file_name}' was uploaded, but text extraction was not possible. "
-                "Proceed using the user-provided form description."
-            ),
-        }
-    ]
+    return [], (
+        f"The uploaded file '{file_name}' could not be parsed for usable content. "
+        "Please upload a text PDF/image with readable text, or paste the relevant details into description."
+    )
 
 
 def _call_openai_with_retry(prompt: str, uploaded_file: UploadFile | None = None, file_bytes: bytes | None = None) -> dict:
@@ -133,6 +133,10 @@ def _call_openai_with_retry(prompt: str, uploaded_file: UploadFile | None = None
         return {"error": "OPENAI_API_KEY is missing. Set it in environment variables."}
 
     last_error = "OpenAI did not return a valid response."
+    user_content, content_error = _build_user_content(prompt, uploaded_file, file_bytes)
+    if content_error:
+        return {"error": content_error}
+
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {API_KEY}",
@@ -141,10 +145,56 @@ def _call_openai_with_retry(prompt: str, uploaded_file: UploadFile | None = None
     payload = {
         "model": OPENAI_MODEL,
         "messages": [
-            {"role": "system", "content": "You are a marketing expert. Return ONLY valid JSON."},
-            {"role": "user", "content": _build_user_content(prompt, uploaded_file, file_bytes)},
+            {
+                "role": "system",
+                "content": (
+                    "You are a senior B2B marketing strategist. "
+                    "Return only valid JSON with keys email, whatsapp, linkedin. "
+                    "Each key must be an object with rich copy. "
+                    "Do not invent facts not supported by provided context."
+                ),
+            },
+            {"role": "user", "content": user_content},
         ],
         "temperature": 0.7,
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "marketing_channels",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "email": {
+                            "type": "object",
+                            "properties": {
+                                "subject": {"type": "string"},
+                                "body": {"type": "string"},
+                            },
+                            "required": ["subject", "body"],
+                            "additionalProperties": False,
+                        },
+                        "whatsapp": {
+                            "type": "object",
+                            "properties": {
+                                "message": {"type": "string"},
+                            },
+                            "required": ["message"],
+                            "additionalProperties": False,
+                        },
+                        "linkedin": {
+                            "type": "object",
+                            "properties": {
+                                "post": {"type": "string"},
+                            },
+                            "required": ["post"],
+                            "additionalProperties": False,
+                        },
+                    },
+                    "required": ["email", "whatsapp", "linkedin"],
+                    "additionalProperties": False,
+                },
+            },
+        },
     }
 
     for attempt in range(3):
@@ -214,7 +264,7 @@ async def generate_marketing_content(
 
         try:
             return json.loads(clean_text)
-        except:
+        except json.JSONDecodeError:
             # fallback if JSON parsing fails
             return {
                 "email": text_output,
