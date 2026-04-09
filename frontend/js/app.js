@@ -26,15 +26,35 @@ function setLoading(isLoading) {
     loader.style.display = isLoading ? 'block' : 'none';
 }
 
+function formatContent(value, fallbackText) {
+    if (value === null || value === undefined || value === "") {
+        return fallbackText;
+    }
+
+    if (typeof value === "string") {
+        return value;
+    }
+
+    if (typeof value === "object") {
+        try {
+            return JSON.stringify(value, null, 2);
+        } catch (_) {
+            return fallbackText;
+        }
+    }
+
+    return String(value);
+}
+
 function updateUI(data) {
     document.getElementById('email-content').innerText =
-        data.email || "No email generated.";
+        formatContent(data.email, "No email generated.");
 
     document.getElementById('whatsapp-content').innerText =
-        data.whatsapp || "No message generated.";
+        formatContent(data.whatsapp, "No message generated.");
 
     document.getElementById('linkedin-content').innerText =
-        data.linkedin || "No post generated.";
+        formatContent(data.linkedin, "No post generated.");
 }
 
 async function generateMarketing() {
