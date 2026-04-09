@@ -47,8 +47,11 @@ class MarketingInput(BaseModel):
 # -------------------------
 # Gemini Config
 # -------------------------
+_default_models = "gemini-2.5-flash,gemini-2.0-flash,gemini-1.5-flash"
 GEMINI_MODELS = [
-    "gemini-2.5-flash",
+    model.strip()
+    for model in os.getenv("GEMINI_MODELS", _default_models).split(",")
+    if model.strip()
 ]
 RETRYABLE_ERROR_STATUSES = {"UNAVAILABLE", "RESOURCE_EXHAUSTED"}
 
