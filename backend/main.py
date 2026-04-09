@@ -6,6 +6,7 @@ from fastapi import UploadFile, File, Form
 from dotenv import load_dotenv
 from pathlib import Path
 from urllib.parse import urlparse
+from typing import List
 env_path = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=env_path)
 import requests
@@ -46,9 +47,26 @@ app.add_middleware(
 # -------------------------
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+MAX_TOTAL_FILES = 8
 TEXT_PREVIEW_LIMIT = 12000
 MIN_DOC_TEXT_LENGTH = 200
 MIN_WEBSITE_TEXT_LENGTH = 300
+
+
+def _normalize_website_url(raw_url: str) -> str:
+    url = (raw_url or "").strip()
+    if not url:
+        return ""
+
+    # Handle common copy/paste artifacts from chats/docs.
+    url = url.strip(" \t\r\n<>\"'`")
+    while url and url[-1] in ").,;]}":
+        url = url[:-1].rstrip()
+
+    if url.startswith("www."):
+        url = f"https://{url}"
+
+    return url
 
 
 def _extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -127,8 +145,8 @@ def _build_user_content(
     prompt: str,
     website_url: str | None,
     website_text: str,
-    uploaded_file: UploadFile | None,
-    file_bytes: bytes | None,
+    uploaded_files: list[UploadFile] | None,
+    files_payload: list[tuple[UploadFile, bytes]],
 ) -> tuple[list[dict], str | None]:
     context_chunks: list[str] = []
     if website_url and website_text:
@@ -138,51 +156,51 @@ def _build_user_content(
             f"{website_text}"
         )
 
-    if uploaded_file and file_bytes:
-        mime_type = uploaded_file.content_type or "application/octet-stream"
-        file_name = uploaded_file.filename or "uploaded_file"
+    if uploaded_files and files_payload:
+        image_blocks: list[dict] = []
+        parse_failures: list[str] = []
 
-        if mime_type.startswith("image/"):
-            encoded = base64.b64encode(file_bytes).decode("utf-8")
-            prefix = (
-                f"{prompt}\n\n"
-                + ("\n\n".join(context_chunks) + "\n\n" if context_chunks else "")
-                + f"An image file named '{file_name}' is attached. Analyze the image carefully and use it as additional campaign context."
-            )
-            return [
-                {"type": "text", "text": prefix},
-                {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{encoded}"}},
-            ], None
+        for uploaded_file, file_bytes in files_payload:
+            mime_type = uploaded_file.content_type or "application/octet-stream"
+            file_name = uploaded_file.filename or "uploaded_file"
 
-        extracted_text = _extract_text_from_file(file_name, file_bytes).strip()
-        if extracted_text:
-            if len(extracted_text) < MIN_DOC_TEXT_LENGTH:
-                return [], (
-                    "We could not extract enough readable text from the uploaded document. "
-                    "Please upload a text-based PDF (not scanned), a clearer image, or paste key content into the description."
+            if mime_type.startswith("image/"):
+                encoded = base64.b64encode(file_bytes).decode("utf-8")
+                image_blocks.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{encoded}"}})
+                context_chunks.append(f"Image attached: {file_name}")
+                continue
+
+            extracted_text = _extract_text_from_file(file_name, file_bytes).strip()
+            if extracted_text and len(extracted_text) >= MIN_DOC_TEXT_LENGTH:
+                limited_text = extracted_text[:TEXT_PREVIEW_LIMIT]
+                truncation_note = ""
+                if len(extracted_text) > TEXT_PREVIEW_LIMIT:
+                    truncation_note = "\n\n[Note: Document content was truncated for token limits.]"
+                context_chunks.append(
+                    f"Document attached: {file_name}\n"
+                    "Use this extracted text as trusted campaign context:\n"
+                    f"{limited_text}{truncation_note}"
                 )
-            limited_text = extracted_text[:TEXT_PREVIEW_LIMIT]
-            truncation_note = ""
-            if len(extracted_text) > TEXT_PREVIEW_LIMIT:
-                truncation_note = "\n\n[Note: Document content was truncated for token limits.]"
-            context_chunks.append(
-                f"Document attached: {file_name}\n"
-                "Use this extracted text as trusted campaign context:\n"
-                f"{limited_text}{truncation_note}"
-            )
-        else:
+            else:
+                parse_failures.append(file_name)
+
+        if not context_chunks and parse_failures:
             return [], (
-                f"The uploaded file '{file_name}' could not be parsed for usable content. "
-                "Please upload a text PDF/image with readable text, or paste the relevant details into description."
+                "We could not extract enough readable text from uploaded documents: "
+                + ", ".join(parse_failures)
+                + ". Please upload text-based PDFs/images or paste key details in description."
             )
 
-    if context_chunks:
-        return [
-            {
-                "type": "text",
-                "text": f"{prompt}\n\n" + "\n\n".join(context_chunks),
-            }
-        ], None
+        if parse_failures:
+            context_chunks.append(
+                "Some files were skipped due to unreadable content: " + ", ".join(parse_failures)
+            )
+
+        if context_chunks:
+            base_text = f"{prompt}\n\n" + "\n\n".join(context_chunks)
+            content_blocks: list[dict] = [{"type": "text", "text": base_text}]
+            content_blocks.extend(image_blocks)
+            return content_blocks, None
 
     return [{"type": "text", "text": prompt}], None
 
@@ -191,14 +209,20 @@ def _call_openai_with_retry(
     prompt: str,
     website_url: str | None = None,
     website_text: str = "",
-    uploaded_file: UploadFile | None = None,
-    file_bytes: bytes | None = None,
+    uploaded_files: list[UploadFile] | None = None,
+    files_payload: list[tuple[UploadFile, bytes]] | None = None,
 ) -> dict:
     if not API_KEY:
         return {"error": "OPENAI_API_KEY is missing. Set it in environment variables."}
 
     last_error = "OpenAI did not return a valid response."
-    user_content, content_error = _build_user_content(prompt, website_url, website_text, uploaded_file, file_bytes)
+    user_content, content_error = _build_user_content(
+        prompt,
+        website_url,
+        website_text,
+        uploaded_files,
+        files_payload or [],
+    )
     if content_error:
         return {"error": content_error}
 
@@ -298,7 +322,7 @@ async def generate_marketing_content(
     campaign: str = Form(...),
     description: str = Form(...),
     website_url: str = Form(default=""),
-    file: UploadFile | None = File(default=None),
+    files: List[UploadFile] = File(default=[]),
 ):
 
     prompt = (
@@ -310,25 +334,31 @@ async def generate_marketing_content(
     )
 
     try:
-        website_url = website_url.strip()
+        website_url = _normalize_website_url(website_url)
         website_text = ""
         if website_url:
             website_text, website_error = _fetch_website_text(website_url)
             if website_error:
                 return {"error": website_error}
 
-        file_bytes = None
-        if file is not None:
+        if len(files) > MAX_TOTAL_FILES:
+            return {"error": f"Too many files uploaded. Please upload up to {MAX_TOTAL_FILES} files."}
+
+        files_payload: list[tuple[UploadFile, bytes]] = []
+        for file in files:
             file_bytes = await file.read()
             if len(file_bytes) > MAX_FILE_SIZE_BYTES:
-                return {"error": "Uploaded file is too large. Please keep files under 10MB."}
+                return {
+                    "error": f"File '{file.filename or 'uploaded file'}' is too large. Keep each file under 10MB."
+                }
+            files_payload.append((file, file_bytes))
 
         result = _call_openai_with_retry(
             prompt=prompt,
             website_url=website_url,
             website_text=website_text,
-            uploaded_file=file,
-            file_bytes=file_bytes,
+            uploaded_files=files,
+            files_payload=files_payload,
         )
 
         choices = result.get("choices", [])

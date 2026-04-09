@@ -1,4 +1,7 @@
 const API_URL = "/generate";
+const selectedFiles = [];
+const MAX_TOTAL_FILES = 8;
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 function setStatus(message, isError = false) {
     const status = document.getElementById('status-message');
@@ -83,6 +86,83 @@ function updateUI(data) {
         formatContent(data.linkedin, "No post generated.");
 }
 
+function formatBytes(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderFileList() {
+    const fileListEl = document.getElementById("file-list");
+    if (!fileListEl) return;
+
+    if (selectedFiles.length === 0) {
+        fileListEl.innerHTML = "";
+        return;
+    }
+
+    const escapeHtml = (value) => String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+
+    fileListEl.innerHTML = selectedFiles
+        .map((file, idx) => `
+            <div class="file-chip">
+                <span class="file-chip-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>
+                <span class="file-chip-size">${formatBytes(file.size)}</span>
+                <button type="button" class="file-chip-remove" data-index="${idx}" aria-label="Remove file">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `)
+        .join("");
+
+    fileListEl.querySelectorAll(".file-chip-remove").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const idx = Number(btn.getAttribute("data-index"));
+            if (!Number.isNaN(idx)) {
+                selectedFiles.splice(idx, 1);
+                renderFileList();
+            }
+        });
+    });
+}
+
+function appendFiles(fileList) {
+    const files = Array.from(fileList || []);
+    const rejectedLarge = [];
+
+    files.forEach((file) => {
+        if (file.size > MAX_FILE_SIZE_BYTES) {
+            rejectedLarge.push(file.name);
+            return;
+        }
+
+        if (selectedFiles.length >= MAX_TOTAL_FILES) {
+            return;
+        }
+
+        const key = `${file.name}-${file.size}-${file.lastModified}`;
+        const alreadyAdded = selectedFiles.some(
+            (existing) => `${existing.name}-${existing.size}-${existing.lastModified}` === key
+        );
+        if (!alreadyAdded) {
+            selectedFiles.push(file);
+        }
+    });
+
+    if (rejectedLarge.length > 0) {
+        setStatus(`Skipped oversized files: ${rejectedLarge.join(", ")} (max 10MB each).`, true);
+    } else if (selectedFiles.length >= MAX_TOTAL_FILES) {
+        setStatus(`You can upload up to ${MAX_TOTAL_FILES} files.`, false);
+    }
+
+    renderFileList();
+}
+
 async function copyCardContent(targetId, button) {
     const source = document.getElementById(targetId);
     if (!source) return;
@@ -112,6 +192,33 @@ function initCopyActions() {
     });
 }
 
+function initUploader() {
+    const dropzone = document.getElementById("upload-dropzone");
+    const input = document.getElementById("supporting-file");
+    if (!dropzone || !input) return;
+
+    dropzone.addEventListener("click", () => input.click());
+    input.addEventListener("change", (event) => {
+        appendFiles(event.target.files);
+        input.value = "";
+    });
+
+    dropzone.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        dropzone.classList.add("dragover");
+    });
+
+    dropzone.addEventListener("dragleave", () => {
+        dropzone.classList.remove("dragover");
+    });
+
+    dropzone.addEventListener("drop", (event) => {
+        event.preventDefault();
+        dropzone.classList.remove("dragover");
+        appendFiles(event.dataTransfer.files);
+    });
+}
+
 async function generateMarketing() {
     const formData = new FormData();
     formData.append('company', document.getElementById('company').value);
@@ -119,10 +226,7 @@ async function generateMarketing() {
     formData.append('description', document.getElementById('description').value);
     formData.append('website_url', document.getElementById('website-url').value);
 
-    const fileInput = document.getElementById('supporting-file');
-    if (fileInput && fileInput.files && fileInput.files[0]) {
-        formData.append('file', fileInput.files[0]);
-    }
+    selectedFiles.forEach((file) => formData.append("files", file));
 
     try {
         setLoading(true);
@@ -150,4 +254,7 @@ async function generateMarketing() {
     }
 }
 
-document.addEventListener("DOMContentLoaded", initCopyActions);
+document.addEventListener("DOMContentLoaded", () => {
+    initCopyActions();
+    initUploader();
+});

@@ -46,8 +46,15 @@
                 </div>
                 <div class="input-group">
                     <label>Upload supporting document (optional)</label>
-                    <input type="file" id="supporting-file" accept=".pdf,.txt,.md,.csv,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif">
-                    <small class="field-hint">Supported: PDF, images, and common text files (max 10MB)</small>
+                    <input class="visually-hidden" type="file" id="supporting-file" accept=".pdf,.txt,.md,.csv,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif" multiple>
+                    <div id="upload-dropzone" class="upload-dropzone">
+                        <div class="upload-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+                        <div class="upload-copy">
+                            <p><strong>Drop files here</strong> or click to browse</p>
+                            <small>PDF, images, and common text files. Max 10MB each, up to 8 files.</small>
+                        </div>
+                    </div>
+                    <div id="file-list" class="file-list"></div>
                 </div>
                 <button id="generateBtn" onclick="generateMarketing()">
                     <span id="btnText">Generate Strategy</span>
