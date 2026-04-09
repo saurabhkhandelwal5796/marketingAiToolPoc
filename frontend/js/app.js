@@ -117,6 +117,7 @@ async function generateMarketing() {
     formData.append('company', document.getElementById('company').value);
     formData.append('campaign', document.getElementById('campaign').value);
     formData.append('description', document.getElementById('description').value);
+    formData.append('website_url', document.getElementById('website-url').value);
 
     const fileInput = document.getElementById('supporting-file');
     if (fileInput && fileInput.files && fileInput.files[0]) {
