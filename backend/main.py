@@ -17,7 +17,7 @@ import time
 # -------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-API_KEY = os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI()
 
@@ -45,59 +45,54 @@ class MarketingInput(BaseModel):
     description: str
 
 # -------------------------
-# Gemini Config
+# OpenAI Config
 # -------------------------
-_default_models = "gemini-2.5-flash,gemini-2.0-flash"
-GEMINI_MODELS = [
-    model.strip()
-    for model in os.getenv("GEMINI_MODELS", _default_models).split(",")
-    if model.strip()
-]
-RETRYABLE_ERROR_STATUSES = {"UNAVAILABLE", "RESOURCE_EXHAUSTED"}
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 
-def _extract_gemini_error(result: dict) -> tuple[str, str]:
-    err = result.get("error", {})
-    if isinstance(err, dict):
-        return err.get("status", ""), err.get("message", "Invalid API response")
-    return "", str(err or "Invalid API response")
-
-
-def _is_retryable(status_code: int, error_status: str) -> bool:
-    return status_code in {429, 500, 502, 503, 504} or error_status in RETRYABLE_ERROR_STATUSES
-
-
-def _call_gemini_with_retry(payload: dict) -> dict:
+def _call_openai_with_retry(prompt: str) -> dict:
     if not API_KEY:
-        return {"error": "GEMINI_API_KEY is missing. Set it in environment variables."}
+        return {"error": "OPENAI_API_KEY is missing. Set it in environment variables."}
 
-    last_error = "Gemini did not return a valid response."
+    last_error = "OpenAI did not return a valid response."
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": OPENAI_MODEL,
+        "messages": [
+            {"role": "system", "content": "You are a marketing expert. Return ONLY valid JSON."},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.7,
+    }
 
-    for model in GEMINI_MODELS:
-        gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={API_KEY}"
-        for attempt in range(3):
+    for attempt in range(3):
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=45)
             try:
-                response = requests.post(gemini_url, json=payload, timeout=45)
-                try:
-                    result = response.json()
-                except ValueError:
-                    result = {"error": {"message": f"Non-JSON response from Gemini ({response.status_code})."}}
+                result = response.json()
+            except ValueError:
+                result = {"error": {"message": f"Non-JSON response from OpenAI ({response.status_code})."}}
 
-                if response.ok and "candidates" in result:
-                    return result
+            if response.ok:
+                return result
 
-                error_status, error_message = _extract_gemini_error(result)
-                last_error = f"{error_message} (model={model})"
+            error_obj = result.get("error", {}) if isinstance(result, dict) else {}
+            error_message = error_obj.get("message", "Invalid API response")
+            last_error = f"{error_message} (model={OPENAI_MODEL})"
 
-                if not _is_retryable(response.status_code, error_status):
-                    break
+            if response.status_code not in {429, 500, 502, 503, 504}:
+                break
 
-                if attempt < 2:
-                    time.sleep(1.5 * (attempt + 1))
-            except requests.RequestException as exc:
-                last_error = f"Network error calling Gemini: {exc}"
-                if attempt < 2:
-                    time.sleep(1.5 * (attempt + 1))
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+        except requests.RequestException as exc:
+            last_error = f"Network error calling OpenAI: {exc}"
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
 
     return {"error": last_error}
 
@@ -115,17 +110,16 @@ async def generate_marketing_content(data: MarketingInput):
         f"Description: {data.description}"
     )
 
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
-    }
-
     try:
-        result = _call_gemini_with_retry(payload)
+        result = _call_openai_with_retry(prompt)
 
-        if "candidates" not in result:
+        choices = result.get("choices", [])
+        if not choices:
             return {"error": result.get("error", "Invalid API response")}
 
-        text_output = result["candidates"][0]["content"]["parts"][0]["text"]
+        text_output = choices[0].get("message", {}).get("content", "")
+        if not text_output:
+            return {"error": "OpenAI returned an empty response."}
 
         clean_text = text_output.replace("```json", "").replace("```", "").strip()
 
