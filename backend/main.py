@@ -5,15 +5,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from pathlib import Path
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
 import requests
 import json
 import os
+import time
 
 # -------------------------
 # Setup
 # -------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv()
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 
@@ -45,7 +47,57 @@ class MarketingInput(BaseModel):
 # -------------------------
 # Gemini Config
 # -------------------------
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY}"
+GEMINI_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
+]
+RETRYABLE_ERROR_STATUSES = {"UNAVAILABLE", "RESOURCE_EXHAUSTED"}
+
+
+def _extract_gemini_error(result: dict) -> tuple[str, str]:
+    err = result.get("error", {})
+    if isinstance(err, dict):
+        return err.get("status", ""), err.get("message", "Invalid API response")
+    return "", str(err or "Invalid API response")
+
+
+def _is_retryable(status_code: int, error_status: str) -> bool:
+    return status_code in {429, 500, 502, 503, 504} or error_status in RETRYABLE_ERROR_STATUSES
+
+
+def _call_gemini_with_retry(payload: dict) -> dict:
+    if not API_KEY:
+        return {"error": "GEMINI_API_KEY is missing. Set it in environment variables."}
+
+    last_error = "Gemini did not return a valid response."
+
+    for model in GEMINI_MODELS:
+        gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={API_KEY}"
+        for attempt in range(3):
+            try:
+                response = requests.post(gemini_url, json=payload, timeout=45)
+                try:
+                    result = response.json()
+                except ValueError:
+                    result = {"error": {"message": f"Non-JSON response from Gemini ({response.status_code})."}}
+
+                if response.ok and "candidates" in result:
+                    return result
+
+                error_status, error_message = _extract_gemini_error(result)
+                last_error = f"{error_message} (model={model})"
+
+                if not _is_retryable(response.status_code, error_status):
+                    break
+
+                if attempt < 2:
+                    time.sleep(1.5 * (attempt + 1))
+            except requests.RequestException as exc:
+                last_error = f"Network error calling Gemini: {exc}"
+                if attempt < 2:
+                    time.sleep(1.5 * (attempt + 1))
+
+    return {"error": last_error}
 
 # -------------------------
 # API
@@ -66,11 +118,7 @@ async def generate_marketing_content(data: MarketingInput):
     }
 
     try:
-        response = requests.post(GEMINI_URL, json=payload)
-        result = response.json()
-
-        # 🔥 Debug (optional)
-        print("Gemini Response:", result)
+        result = _call_gemini_with_retry(payload)
 
         if "candidates" not in result:
             return {"error": result.get("error", "Invalid API response")}
@@ -104,85 +152,3 @@ async def generate_marketing_content(data: MarketingInput):
 
 
 
-
-
-# from fastapi.staticfiles import StaticFiles
-# from fastapi.responses import FileResponse
-# import os
-# from fastapi import FastAPI
-# from pydantic import BaseModel
-# from dotenv import load_dotenv
-# import requests
-# import json
-# from fastapi.middleware.cors import CORSMiddleware
-
-# from pathlib import Path
-
-# BASE_DIR = Path(__file__).resolve().parent.parent
-
-# # Load environment variables
-# load_dotenv()
-# API_KEY = os.getenv("GEMINI_API_KEY")
-
-# app = FastAPI()
-# # app.mount("/static", StaticFiles(directory="frontend"), name="static")
-# app.mount("/static", StaticFiles(directory=BASE_DIR / "frontend"), name="static")
-# @app.get("/")
-# def serve_ui():
-#     return FileResponse(BASE_DIR / "frontend" / "index.html")
-
-# # @app.get("/")
-# # def read_root():
-# #     return {"message": "Marketing AI Tool API is running"}
-
-
-
-# # IMPORTANT: This allows your HTML file to talk to your Python backend
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# # Gemini API Endpoint
-# GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={API_KEY}"
-
-# class MarketingInput(BaseModel):
-#     company: str
-#     campaign: str
-#     description: str
-
-# @app.post("/generate")
-# async def generate_marketing_content(data: MarketingInput):
-#     # This prompt tells Gemini exactly how to format the data
-#     prompt = (
-#         f"You are a marketing expert. Return response STRICTLY in JSON format without markdown code blocks. "
-#         'The JSON must have three keys: "email", "whatsapp", and "linkedin". '
-#         f"\nCompany: {data.company}\nCampaign: {data.campaign}\nDescription: {data.description}"
-#     )
-
-#     payload = {
-#         "contents": [{
-#             "parts": [{"text": prompt}]
-#         }]
-#     }
-
-#     try:
-#         response = requests.post(GEMINI_URL, json=payload)
-#         response_json = response.json()
-#         print(response_json)
-        
-#         # Extract the text string from Gemini's nested structure
-#         text_output = response_json['candidates'][0]['content']['parts'][0]['text']
-        
-#         # Clean the string in case Gemini adds ```json wrap
-#         clean_text = text_output.replace("```json", "").replace("```", "").strip()
-        
-#         return json.loads(clean_text)
-#     except Exception as e:
-#         return {"error": str(e)}
-
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="127.0.0.1", port=8000)
