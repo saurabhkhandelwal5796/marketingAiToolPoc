@@ -39,6 +39,11 @@
                     <label>Product/Service Description</label>
                     <textarea id="description" rows="4" placeholder="Describe what you are offering..."></textarea>
                 </div>
+                <div class="input-group">
+                    <label>Upload supporting document (optional)</label>
+                    <input type="file" id="supporting-file" accept=".pdf,.txt,.md,.csv,.doc,.docx,.jpg,.jpeg,.png,.webp,.gif">
+                    <small class="field-hint">Supported: PDF, images, and common text files (max 10MB)</small>
+                </div>
                 <button id="generateBtn" onclick="generateMarketing()">
                     <span id="btnText">Generate Strategy</span>
                     <div id="loader" class="spinner" style="display:none;"></div>

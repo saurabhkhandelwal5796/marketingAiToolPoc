@@ -113,11 +113,15 @@ function initCopyActions() {
 }
 
 async function generateMarketing() {
-    const payload = {
-        company: document.getElementById('company').value,
-        campaign: document.getElementById('campaign').value,
-        description: document.getElementById('description').value
-    };
+    const formData = new FormData();
+    formData.append('company', document.getElementById('company').value);
+    formData.append('campaign', document.getElementById('campaign').value);
+    formData.append('description', document.getElementById('description').value);
+
+    const fileInput = document.getElementById('supporting-file');
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+        formData.append('file', fileInput.files[0]);
+    }
 
     try {
         setLoading(true);
@@ -125,8 +129,7 @@ async function generateMarketing() {
 
         const response = await fetch(API_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: formData
         });
 
         const data = await response.json();

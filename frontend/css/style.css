@@ -121,6 +121,11 @@ label {
     color: #475569;
 }
 
+.field-hint {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
 input,
 textarea {
     width: 100%;
