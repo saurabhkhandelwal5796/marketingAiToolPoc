@@ -37,7 +37,33 @@ function formatContent(value, fallbackText) {
 
     if (typeof value === "object") {
         try {
-            return JSON.stringify(value, null, 2);
+            const orderedKeys = ["subject", "body", "message", "post", "title", "content"];
+            const lines = [];
+
+            orderedKeys.forEach((key) => {
+                const raw = value[key];
+                if (typeof raw === "string" && raw.trim()) {
+                    if (key === "subject" || key === "title") {
+                        lines.push(raw.trim());
+                    } else {
+                        lines.push(raw.trim());
+                    }
+                }
+            });
+
+            if (lines.length > 0) {
+                return lines.join("\n\n");
+            }
+
+            const dynamicValues = Object.values(value)
+                .filter((item) => typeof item === "string" && item.trim())
+                .map((item) => item.trim());
+
+            if (dynamicValues.length > 0) {
+                return dynamicValues.join("\n\n");
+            }
+
+            return fallbackText;
         } catch (_) {
             return fallbackText;
         }
