@@ -83,6 +83,35 @@ function updateUI(data) {
         formatContent(data.linkedin, "No post generated.");
 }
 
+async function copyCardContent(targetId, button) {
+    const source = document.getElementById(targetId);
+    if (!source) return;
+
+    const text = source.innerText.trim();
+    if (!text) return;
+
+    try {
+        await navigator.clipboard.writeText(text);
+        button.classList.add("copied");
+        button.innerHTML = '<i class="fas fa-check"></i>';
+        setStatus("Copied to clipboard.");
+        setTimeout(() => {
+            button.classList.remove("copied");
+            button.innerHTML = '<i class="far fa-copy"></i>';
+        }, 1400);
+    } catch (error) {
+        setStatus("Could not copy automatically. Please copy manually.", true);
+    }
+}
+
+function initCopyActions() {
+    const copyButtons = document.querySelectorAll(".copy-btn");
+    copyButtons.forEach((button) => {
+        const targetId = button.getAttribute("data-target");
+        button.addEventListener("click", () => copyCardContent(targetId, button));
+    });
+}
+
 async function generateMarketing() {
     const payload = {
         company: document.getElementById('company').value,
@@ -116,3 +145,5 @@ async function generateMarketing() {
         setLoading(false);
     }
 }
+
+document.addEventListener("DOMContentLoaded", initCopyActions);

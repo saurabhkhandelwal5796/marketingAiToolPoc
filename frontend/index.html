@@ -11,13 +11,22 @@
 </head>
 <body>
     <div class="app-wrapper">
-        <header>
-            <h1><i class="fas fa-bullhorn"></i> Marketing AI Pro</h1>
-            <p>Generate multi-channel campaigns in seconds</p>
+        <header class="topbar">
+            <div class="brand">
+                <span class="brand-icon"><i class="fas fa-bullhorn"></i></span>
+                <div class="brand-text">
+                    <h1>Marketing AI Pro</h1>
+                    <p>Generate multi-channel campaigns in seconds</p>
+                </div>
+            </div>
         </header>
 
         <main class="container">
             <section class="input-section">
+                <div class="section-head">
+                    <h2>Campaign Brief</h2>
+                    <p>Describe your offer and we will draft channel-ready copy.</p>
+                </div>
                 <div class="input-group">
                     <label>Company Name</label>
                     <input type="text" id="company" placeholder="e.g., Cloud Certitude">
@@ -39,25 +48,31 @@
 
             <section class="results-grid">
                 <div class="card email-card">
-                    <div class="card-header">
-                        <i class="fas fa-envelope"></i>
-                        <h3>Email Campaign</h3>
+                    <div class="card-header-row">
+                        <div class="badge badge-email"><i class="fas fa-envelope"></i> Email Campaign</div>
+                        <button class="copy-btn" data-target="email-content" aria-label="Copy email campaign">
+                            <i class="far fa-copy"></i>
+                        </button>
                     </div>
                     <div id="email-content" class="content">Drafting will appear here...</div>
                 </div>
 
                 <div class="card whatsapp-card">
-                    <div class="card-header">
-                        <i class="fab fa-whatsapp"></i>
-                        <h3>WhatsApp Blast</h3>
+                    <div class="card-header-row">
+                        <div class="badge badge-whatsapp"><i class="fab fa-whatsapp"></i> WhatsApp Blast</div>
+                        <button class="copy-btn" data-target="whatsapp-content" aria-label="Copy whatsapp blast">
+                            <i class="far fa-copy"></i>
+                        </button>
                     </div>
                     <div id="whatsapp-content" class="content">Messages will appear here...</div>
                 </div>
 
                 <div class="card linkedin-card">
-                    <div class="card-header">
-                        <i class="fab fa-linkedin-in"></i>
-                        <h3>LinkedIn Post</h3>
+                    <div class="card-header-row">
+                        <div class="badge badge-linkedin"><i class="fab fa-linkedin-in"></i> LinkedIn Post</div>
+                        <button class="copy-btn" data-target="linkedin-content" aria-label="Copy linkedin post">
+                            <i class="far fa-copy"></i>
+                        </button>
                     </div>
                     <div id="linkedin-content" class="content">Posts will appear here...</div>
                 </div>
